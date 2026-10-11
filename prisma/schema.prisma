@@ -1,0 +1,315 @@
+generator client {
+ provider = "prisma-client-js"
+ binaryTargets = ["native", "linux-arm64-openssl-3.0.x"]
+}
+datasource db {
+ provider = "postgresql"
+ url = env("DATABASE_URL")
+ directUrl = env("MIGRATION_DATABASE_URL")
+}
+model Organization {
+ id String @id @default(cuid())
+ name String
+ currency String @default("INR")
+ createdAt DateTime @default(now())
+ memberships Membership[]
+ departments Department[]
+ employees Employee[]
+ accounts Account[]
+ entries JournalEntry[]
+ categories ExpenseCategory[]
+ expenses Expense[]
+ budgets Budget[]
+ transactions FinancialTransaction[]
+ documents Document[]
+ conversations Conversation[]
+ findings AuditFinding[]
+ logs AuditLog[]
+ @@map("organizations")
+}
+model User {
+ id String @id @default(cuid())
+ email String @unique
+ name String
+ passwordHash String
+ createdAt DateTime @default(now())
+ memberships Membership[]
+ sessions Session[]
+ employees Employee[]
+ conversations Conversation[]
+ @@map("users")
+}
+model Membership {
+ id String @id @default(cuid())
+ organizationId String
+ userId String
+ role String
+ departmentId String?
+ organization Organization @relation(fields:[organizationId], references:[id], onDelete:Cascade)
+ user User @relation(fields:[userId], references:[id], onDelete:Cascade)
+ department Department? @relation(fields:[departmentId], references:[id])
+ @@unique([organizationId,userId])
+ @@map("organization_memberships")
+}
+model Session {
+ id String @id
+ userId String
+ organizationId String
+ expiresAt DateTime
+ user User @relation(fields:[userId], references:[id], onDelete:Cascade)
+ @@index([expiresAt])
+ @@map("sessions")
+}
+model Department {
+ id String @id @default(cuid())
+ organizationId String
+ name String
+ color String @default("#22d3ee")
+ organization Organization @relation(fields:[organizationId], references:[id], onDelete:Cascade)
+ memberships Membership[]
+ employees Employee[]
+ budgets Budget[]
+ expenses Expense[]
+ documents Document[]
+ @@unique([organizationId,name])
+ @@index([organizationId])
+ @@map("departments")
+}
+model Employee {
+ id String @id @default(cuid())
+ organizationId String
+ departmentId String
+ userId String?
+ name String
+ organization Organization @relation(fields:[organizationId], references:[id], onDelete:Cascade)
+ department Department @relation(fields:[departmentId], references:[id])
+ user User? @relation(fields:[userId], references:[id])
+ expenses Expense[]
+ @@unique([organizationId,userId])
+ @@index([organizationId,departmentId])
+ @@map("employees")
+}
+model Account {
+ id String @id @default(cuid())
+ organizationId String
+ code String
+ name String
+ kind String
+ organization Organization @relation(fields:[organizationId], references:[id], onDelete:Cascade)
+ lines JournalLine[]
+ @@unique([organizationId,code])
+ @@map("accounts")
+}
+model JournalEntry {
+ id String @id @default(cuid())
+ organizationId String
+ description String
+ date DateTime @db.Date
+ organization Organization @relation(fields:[organizationId], references:[id], onDelete:Cascade)
+ lines JournalLine[]
+ @@index([organizationId,date])
+ @@map("journal_entries")
+}
+model JournalLine {
+ id String @id @default(cuid())
+ entryId String
+ accountId String
+ debit Decimal @db.Decimal(18,2)
+ credit Decimal @db.Decimal(18,2)
+ entry JournalEntry @relation(fields:[entryId], references:[id], onDelete:Cascade)
+ account Account @relation(fields:[accountId], references:[id])
+ @@map("journal_lines")
+}
+model Budget {
+ id String @id @default(cuid())
+ organizationId String
+ departmentId String
+ month String
+ amount Decimal @db.Decimal(18,2)
+ category String @default("ALL")
+ updatedAt DateTime @updatedAt
+ organization Organization @relation(fields:[organizationId], references:[id], onDelete:Cascade)
+ department Department @relation(fields:[departmentId], references:[id])
+ history BudgetPeriod[]
+ @@unique([organizationId,departmentId,month,category])
+ @@map("budgets")
+}
+model BudgetPeriod {
+ id String @id @default(cuid())
+ budgetId String
+ amount Decimal @db.Decimal(18,2)
+ actorId String
+ createdAt DateTime @default(now())
+ budget Budget @relation(fields:[budgetId], references:[id], onDelete:Cascade)
+ @@map("budget_periods")
+}
+model ExpenseCategory {
+ id String @id @default(cuid())
+ organizationId String
+ name String
+ threshold Decimal @db.Decimal(18,2)
+ organization Organization @relation(fields:[organizationId], references:[id], onDelete:Cascade)
+ @@unique([organizationId,name])
+ @@map("expense_categories")
+}
+model Expense {
+ id String @id @default(cuid())
+ organizationId String
+ employeeId String
+ departmentId String
+ amount Decimal @db.Decimal(18,2)
+ currency String @default("INR")
+ category String
+ merchant String
+ date DateTime @db.Date
+ description String
+ status String @default("PENDING")
+ receipt Boolean @default(false)
+ createdAt DateTime @default(now())
+ organization Organization @relation(fields:[organizationId], references:[id], onDelete:Cascade)
+ employee Employee @relation(fields:[employeeId], references:[id])
+ department Department @relation(fields:[departmentId], references:[id])
+ attachments ExpenseAttachment[]
+ approvals ExpenseApproval[]
+ flags RiskFlag[]
+ comments ReviewComment[]
+ @@index([organizationId,departmentId,date,status])
+ @@index([employeeId,date])
+ @@map("expenses")
+}
+model ExpenseAttachment {
+ id String @id @default(cuid())
+ expenseId String
+ path String
+ name String
+ kind String @default("RECEIPT")
+ expense Expense @relation(fields:[expenseId], references:[id], onDelete:Cascade)
+ @@map("expense_attachments")
+}
+model ExpenseApproval {
+ id String @id @default(cuid())
+ expenseId String
+ actorId String
+ status String
+ createdAt DateTime @default(now())
+ expense Expense @relation(fields:[expenseId], references:[id], onDelete:Cascade)
+ @@map("expense_approvals")
+}
+model ReviewComment {
+ id String @id @default(cuid())
+ expenseId String
+ actor String
+ text String
+ createdAt DateTime @default(now())
+ expense Expense @relation(fields:[expenseId], references:[id], onDelete:Cascade)
+ @@map("review_comments")
+}
+model RiskFlag {
+ id String @id @default(cuid())
+ expenseId String
+ rule String
+ severity String
+ explanation String
+ expense Expense @relation(fields:[expenseId], references:[id], onDelete:Cascade)
+ @@map("risk_flags")
+}
+model FinancialTransaction {
+ id String @id @default(cuid())
+ organizationId String
+ departmentId String?
+ kind String
+ amount Decimal @db.Decimal(18,2)
+ date DateTime @db.Date
+ description String
+ organization Organization @relation(fields:[organizationId], references:[id], onDelete:Cascade)
+ @@index([organizationId,date,kind])
+ @@map("financial_transactions")
+}
+model Document {
+ id String @id @default(cuid())
+ organizationId String
+ departmentId String?
+ uploadedById String?
+ reviewedById String?
+ title String
+ type String
+ size String
+ status String @default("QUEUED")
+ storagePath String?
+ content String?
+ error String?
+ model String?
+ dimensions Int?
+ createdAt DateTime @default(now())
+ organization Organization @relation(fields:[organizationId], references:[id], onDelete:Cascade)
+ department Department? @relation(fields:[departmentId], references:[id])
+ chunks DocumentChunk[]
+ @@index([organizationId,departmentId,status])
+ @@map("documents")
+}
+model DocumentChunk {
+ id String @id @default(cuid())
+ documentId String
+ content String
+ page Int?
+ embedding Unsupported("extensions.vector(1024)")?
+ document Document @relation(fields:[documentId], references:[id], onDelete:Cascade)
+ @@index([documentId])
+ @@map("document_chunks")
+}
+model Conversation {
+ id String @id @default(cuid())
+ organizationId String
+ userId String
+ title String
+ createdAt DateTime @default(now())
+ organization Organization @relation(fields:[organizationId], references:[id], onDelete:Cascade)
+ user User @relation(fields:[userId], references:[id], onDelete:Cascade)
+ messages Message[]
+ @@index([organizationId,userId])
+ @@map("conversations")
+}
+model Message {
+ id String @id @default(cuid())
+ conversationId String
+ role String
+ content String
+ payload Json?
+ createdAt DateTime @default(now())
+ conversation Conversation @relation(fields:[conversationId], references:[id], onDelete:Cascade)
+ sources MessageSource[]
+ @@map("messages")
+}
+model MessageSource {
+ id String @id @default(cuid())
+ messageId String
+ sourceId String
+ metadata Json
+ message Message @relation(fields:[messageId], references:[id], onDelete:Cascade)
+ @@map("message_sources")
+}
+model AuditFinding {
+ id String @id @default(cuid())
+ organizationId String
+ expenseId String
+ title String
+ description String
+ severity String
+ status String @default("OPEN")
+ createdAt DateTime @default(now())
+ organization Organization @relation(fields:[organizationId], references:[id], onDelete:Cascade)
+ @@index([organizationId,status])
+ @@map("audit_findings")
+}
+model AuditLog {
+ id String @id @default(cuid())
+ organizationId String
+ actorId String
+ action String
+ target String
+ metadata Json?
+ createdAt DateTime @default(now())
+ organization Organization @relation(fields:[organizationId], references:[id], onDelete:Cascade)
+ @@index([organizationId,createdAt])
+ @@map("audit_logs")
+}
